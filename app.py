@@ -5,6 +5,8 @@ from openai import AzureOpenAI
 import pandas as pd
 from data_cleaning import clean_data
 from embeddings_utils import create_embeddings_from_df, query_data
+import uuid
+import streamlit.components.v1 as components
 
 # Last inn miljøvariabler
 load_dotenv()
@@ -157,7 +159,27 @@ Svar basert på dataanalysen:
                 except Exception as e:
                     st.error(f"Det oppstod en feil ved generering av svar: {e}")
 
-    prompt = st.text_input("Skriv inn din prompt her:", placeholder="F.eks, Hva er hovedstaden i Norge")
+    # Legg til dropdown med forhåndsdefinerte prompter
+    st.markdown("### Generell AI-assistent")
+    
+    # Forhåndsdefinerte prompter
+    predefined_prompts = {
+        "Velg en forhåndsdefinert prompt...": "",
+        "Hva er hovedstaden i Sverige?": "Hva er hovedstaden i Sverige?",
+        "Gi meg en liste over hvordan vurdere markedsrisiko?": "Gi meg en liste over hvordan vurdere markedsrisiko?",
+        "Hvor mange fylker har vi i Norge?": "Hvor mange fylker har vi i Norge?",
+        "Hvordan skrive en selskapsrapport?": "Hvordan skrive en selskapsrapport?"
+    }
+    
+    selected_prompt = st.selectbox(
+        "Velg en forhåndsdefinert prompt:",
+        options=list(predefined_prompts.keys()),
+        index=0
+    )
+
+    prompt = st.text_input("Skriv inn din prompt her:", 
+                          value=predefined_prompts[selected_prompt] if selected_prompt != "Velg en forhåndsdefinert prompt..." else "",
+                          placeholder="F.eks, Hva er hovedstaden i Norge")
 
     temperatur = st.slider("Temperatur", 0.0, 1.0, 0.0, 0.01)
     st.caption("Styrer hvor kreative svarene skal være")
@@ -190,7 +212,98 @@ Svar basert på dataanalysen:
         else:
             output = "Vennligst skriv inn en prompt først"
 
-    st.text_area("", value=output, height=120, disabled=True)
+    # Beregn høyde basert på innhold
+    if output:
+        # Estimer antall linjer basert på lengde og linjeskift
+        lines = output.count('\n') + len(output) // 80 + 1
+        height = max(200, min(lines * 25, 800))  # Økt minimum til 200px, maksimum til 800px
+    else:
+        height = 200  # Økt standard høyde
+
+    # Text area med copy-funksjonalitet
+    col_output, col_copy = st.columns([4, 1])
+    
+    with col_output:
+        st.text_area("", value=output, height=height, disabled=True, key="output_area")
+    
+    with col_copy:
+        if output and output != "Vennligst skriv inn en prompt først":
+            # Legg til litt spacing for å justere knappen
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Generer unik ID for denne instansen
+            unique_id = str(uuid.uuid4()).replace('-', '')
+            
+            # HTML/JavaScript copy-knapp
+            components.html(f"""
+                <div id="copy-container-{unique_id}">
+                    <button onclick="copyToClipboard_{unique_id}()" style="
+                        background-color: #ff4b4b;
+                        color: white;
+                        border: none;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        margin-top: 5px;">
+                        Copy
+                    </button>
+                    <div id="feedback-{unique_id}" style="
+                        color: green;
+                        font-size: 12px;
+                        margin-top: 5px;
+                        display: none;">
+                        Copied!
+                    </div>
+                </div>
+
+                <script>
+                function copyToClipboard_{unique_id}() {{
+                    const textToCopy = `{output.replace('`', '\\`').replace('\\', '\\\\').replace('"', '\\"')}`;
+                    
+                    if (navigator.clipboard && window.isSecureContext) {{
+                        // Moderne clipboard API
+                        navigator.clipboard.writeText(textToCopy).then(function() {{
+                            showFeedback_{unique_id}();
+                        }}).catch(function(err) {{
+                            console.error('Clipboard API failed: ', err);
+                            fallbackCopy_{unique_id}(textToCopy);
+                        }});
+                    }} else {{
+                        // Fallback for eldre nettlesere
+                        fallbackCopy_{unique_id}(textToCopy);
+                    }}
+                }}
+
+                function fallbackCopy_{unique_id}(text) {{
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    
+                    try {{
+                        document.execCommand('copy');
+                        showFeedback_{unique_id}();
+                    }} catch (err) {{
+                        console.error('Fallback copy failed: ', err);
+                    }}
+                    
+                    document.body.removeChild(textArea);
+                }}
+
+                function showFeedback_{unique_id}() {{
+                    const feedback = document.getElementById('feedback-{unique_id}');
+                    feedback.style.display = 'block';
+                    setTimeout(() => {{
+                        feedback.style.display = 'none';
+                    }}, 2000);
+                }}
+                </script>
+            """, height=100)
 
 with col2:
     with st.expander("📚 Historikk", expanded=True):
